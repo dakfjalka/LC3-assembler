@@ -1,6 +1,6 @@
 /**
  * @file assembler_consts.h
- * @author PB21000293
+ * @author PB21000xxx
  * @brief assembler.c 中需要的部分常量，为了好看就单独开了个文件。
  *        只能被 assembler.c 引用，否则会导致重复定义。
  * @version 0.3
