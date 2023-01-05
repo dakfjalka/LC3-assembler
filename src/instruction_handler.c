@@ -11,13 +11,14 @@ const char _BR_inttruction_const[][4] = {
         "111", "100", "010", "001", "110", "011", "111"
 };
 
-_label_type *__locate_label(_label_type *p_list, char *name){
-    p_list = p_list->next;
-    while(p_list != NULL){
-        if(strcmp(p_list->name, name) == 0) return p_list;
-        p_list = p_list->next;
+int __locate_label(_label_list_type *label_list, char *name){
+    int i = 0;
+    for(i = 0; i < label_list->length; ++ i){
+        if(strcmp(name, (label_list->labels)[i].name) == 0){
+            return i;
+        }
     }
-    return NULL;
+    return -1;
 }
 
 int __get_rigister_index(char *str){
@@ -116,17 +117,15 @@ int __int_to_2_com_bin(int value, int num_of_bits, char *dst){
     return 1;
 }
 
-__err_info_type _set_offset(char *label, int line_address, int num_bits, _label_type *label_list, char *offset_buffer){
-    _label_type *p_label = NULL;
-    p_label = __locate_label(label_list, label);
-    if(p_label == NULL){
+__err_info_type _set_offset(char *label, int line_address, int num_bits, _label_list_type *label_list, char *offset_buffer){
+    int label_index = __locate_label(label_list, label);
+    if(label_index == -1){
         return LABEL_UNDEFINED;
     }else{
-        int address_offset = p_label->address - line_address;
+        int address_offset = label_list->labels[label_index].address - line_address - 1;
         if(__int_to_2_com_bin(address_offset, num_bits, offset_buffer) == 0){
             return OFFSET_TO_STRING_FAIL;
         }
-
     }
     return SUCCESS;
 }
@@ -152,7 +151,7 @@ __err_info_type _set_start_index(_line_type *p_line, char *instruction_name, int
     return SUCCESS;
 }
 
-_err_type ADD_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type ADD_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, rigister_index = -1;
     char R_buffer[4] = {'\0'};
@@ -195,7 +194,7 @@ _err_type ADD_handler(_line_type *p_line, _label_type *label_list, _machine_code
     return err;
 }
 
-_err_type AND_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type AND_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, rigister_index = -1;
     char R_buffer[4] = {'\0'};
@@ -246,7 +245,7 @@ int _BR_is_BR(char *str){
     return -1;
 }
 
-_err_type BR_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type BR_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, BR_index = -1;
     char address_offset_buffer[10] = {'\0'};
@@ -275,33 +274,62 @@ _err_type BR_handler(_line_type *p_line, _label_type *label_list, _machine_code_
     return err;
 }
 
-_err_type JMP_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type JMP_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
+    int i = 0, rigister_index = -1;
+    char R_buffer[4] = {'\0'};
+
+    strcpy(machine_code->machine_code, "1100");
+    err.info = _set_start_index(p_line, "JMP", &i);
+    if(err.info != SUCCESS) return err;
+    ++ i;
+
+    strcat(machine_code->machine_code, "000");
+
+    err.info = _set_register(p_line->content[i], R_buffer);
+    if(err.info != SUCCESS) return err;
+    strcat(machine_code->machine_code, R_buffer);
+
+    strcat(machine_code->machine_code, "000000");
 
     return err;
 }
 
-_err_type JSR_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type JSR_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
+    int i = 0, rigister_index = -1;
+    char PC_offset_buffer[12] = {'\0'};
+
+    strcpy(machine_code->machine_code, "0100");
+    err.info = _set_start_index(p_line, "JSR", &i);
+    if(err.info != SUCCESS) return err;
+    ++ i;
+
+    strcat(machine_code->machine_code, "1");
+
+    err.info = _set_offset(
+        p_line->content[i],
+        p_line->physical_line,
+        11,
+        label_list,
+        PC_offset_buffer);
+    if(err.info != SUCCESS) return err;
+    strcat(machine_code->machine_code, PC_offset_buffer);
 
     return err;
 }
 
-_err_type LD_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type LD_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, dst_register_index = -1;
     char PC_offset_buffer[10] = {'\0'};
     char dst_register_buffer[4] = {'\0'};
-    _label_type *p_label = NULL;
+
     strcpy(machine_code->machine_code, "0010");
-    if(strcmp("LD", p_line->content[0]) != 0){
-        if(strcmp("LD", p_line->content[1]) != 0){
-            err.info = INAVLID_INSTRUCTION;
-            return err;
-        }
-        i = 1;
-    }
+    err.info = _set_start_index(p_line, "LD", &i);
+    if(err.info != SUCCESS) return err;
     ++ i;
+
     dst_register_index =  __get_rigister_index(p_line->content[i]);
     if(dst_register_index == -1){
         err.info = INVALID_REGISTER;
@@ -322,21 +350,17 @@ _err_type LD_handler(_line_type *p_line, _label_type *label_list, _machine_code_
     return err;
 }
 
-_err_type LDI_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type LDI_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, dst_register_index = -1;
     char PC_offset_buffer[10] = {'\0'};
     char dst_register_buffer[4] = {'\0'};
-    _label_type *p_label = NULL;
+
     strcpy(machine_code->machine_code, "1010");
-    if(strcmp("LDI", p_line->content[0]) != 0){
-        if(strcmp("LDI", p_line->content[1]) != 0){
-            err.info = INAVLID_INSTRUCTION;
-            return err;
-        }
-        i = 1;
-    }
+    err.info = _set_start_index(p_line, "LDI", &i);
+    if(err.info != SUCCESS) return err;
     ++ i;
+
     dst_register_index =  __get_rigister_index(p_line->content[i]);
     if(dst_register_index == -1){
         err.info = INVALID_REGISTER;
@@ -357,23 +381,79 @@ _err_type LDI_handler(_line_type *p_line, _label_type *label_list, _machine_code
     return err;
 }
 
-_err_type LDR_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type LDR_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
+    int i = 0, register_index = -1, offset = 0;
+    char offset_buffer[7] = {'\0'};
+    char register_buffer[4] = {'\0'};
+
+    strcpy(machine_code->machine_code, "0110");
+    err.info = _set_start_index(p_line, "LDR", &i);
+    if(err.info != SUCCESS) return err;
+    ++ i;
+
+    register_index =  __get_rigister_index(p_line->content[i]);
+    if(register_index == -1){
+        err.info = INVALID_REGISTER;
+        return err;
+    }
+    __register_int_to_bin(register_index, register_buffer);
+    strcat(machine_code->machine_code, register_buffer);
+    ++ i;
+
+    register_index =  __get_rigister_index(p_line->content[i]);
+    if(register_index == -1){
+        err.info = INVALID_REGISTER;
+        return err;
+    }
+    __register_int_to_bin(register_index, register_buffer);
+    strcat(machine_code->machine_code, register_buffer);
+    ++ i;
+
+    if(__imm_to_int(p_line->content[i], &offset) == 0){
+        err.info = INVALID_IMMIDIATE_VALUE;
+        return err;
+    }
+    if(__int_to_2_com_bin(offset, 6, offset_buffer) == 0){
+        err.info = IMM_VALUE_TO_STRING_FAIL;
+        return err;
+    }
+    strcat(machine_code->machine_code, offset_buffer);
+    return err;
+}
+
+_err_type LEA_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
+    _err_type err = {p_line->origional_line, SUCCESS};
+    int i = 0, register_index = -1;
+    char PC_offset_buffer[7] = {'\0'};
+    char register_buffer[4] = {'\0'};
+
+    strcpy(machine_code->machine_code, "1110");
+    err.info = _set_start_index(p_line, "LEA", &i);
+    if(err.info != SUCCESS) return err;
+    ++ i;
+
+    err.info = _set_register(p_line->content[i], register_buffer);
+    if(err.info != SUCCESS) return err;
+    strcat(machine_code->machine_code, register_buffer);
+    ++ i;
+
+    err.info = _set_offset(
+        p_line->content[i],
+        p_line->physical_line,
+        9,
+        label_list,
+        PC_offset_buffer);
+    if(err.info != SUCCESS) return err;
+    strcat(machine_code->machine_code, PC_offset_buffer);
 
     return err;
 }
 
-_err_type LEA_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
-    _err_type err = {p_line->origional_line, SUCCESS};
-
-    return err;
-}
-
-_err_type NOT_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type NOT_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0;
     char register_buffer[4] = {'\0'};
-    _label_type *p_label = NULL;
 
     strcpy(machine_code->machine_code, "1001");
     err.info = _set_start_index(p_line, "NOT", &i);
@@ -394,25 +474,50 @@ _err_type NOT_handler(_line_type *p_line, _label_type *label_list, _machine_code
     return err;
 }
 
-_err_type RET_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type RET_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
-
+    strcat(machine_code->machine_code, "1100000111000000");
     return err;
 }
 
-_err_type RTI_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type RTI_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
-
+    strcat(machine_code->machine_code, "1000000000000000");
     return err;
 }
 
-_err_type ST_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type ST_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
+    int i = 0, dst_register_index = -1;
+    char PC_offset_buffer[10] = {'\0'};
+    char dst_register_buffer[4] = {'\0'};
 
+    strcpy(machine_code->machine_code, "0011");
+    err.info = _set_start_index(p_line, "ST", &i);
+    if(err.info != SUCCESS) return err;
+    ++ i;
+
+    dst_register_index =  __get_rigister_index(p_line->content[i]);
+    if(dst_register_index == -1){
+        err.info = INVALID_REGISTER;
+        return err;
+    }
+    __register_int_to_bin(dst_register_index, dst_register_buffer);
+    strcat(machine_code->machine_code, dst_register_buffer);
+    ++ i;
+
+    err.info = _set_offset(
+        p_line->content[i],
+        p_line->physical_line,
+        9,
+        label_list,
+        PC_offset_buffer);
+    if(err.info != SUCCESS) return err;
+    strcat(machine_code->machine_code, PC_offset_buffer);
     return err;
 }
 
-_err_type STI_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type STI_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0;
     char register_buffer[4] = {'\0'};
@@ -439,19 +544,54 @@ _err_type STI_handler(_line_type *p_line, _label_type *label_list, _machine_code
     return err;
 }
 
-_err_type STR_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type STR_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
+    int i = 0, register_index = -1, offset = 0;
+    char offset_buffer[7] = {'\0'};
+    char register_buffer[4] = {'\0'};
 
+    strcpy(machine_code->machine_code, "0111");
+    err.info = _set_start_index(p_line, "STR", &i);
+    if(err.info != SUCCESS) return err;
+    ++ i;
+
+    register_index =  __get_rigister_index(p_line->content[i]);
+    if(register_index == -1){
+        err.info = INVALID_REGISTER;
+        return err;
+    }
+    __register_int_to_bin(register_index, register_buffer);
+    strcat(machine_code->machine_code, register_buffer);
+    ++ i;
+
+    register_index =  __get_rigister_index(p_line->content[i]);
+    if(register_index == -1){
+        err.info = INVALID_REGISTER;
+        return err;
+    }
+    __register_int_to_bin(register_index, register_buffer);
+    strcat(machine_code->machine_code, register_buffer);
+    ++ i;
+
+    if(__imm_to_int(p_line->content[i], &offset) == 0){
+        err.info = INVALID_IMMIDIATE_VALUE;
+        return err;
+    }
+    if(__int_to_2_com_bin(offset, 6, offset_buffer) == 0){
+        err.info = IMM_VALUE_TO_STRING_FAIL;
+        return err;
+    }
+    strcat(machine_code->machine_code, offset_buffer);
     return err;
 }
 
-_err_type HALT_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type HALT_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
-    strcpy(machine_code->machine_code, "1111000000100011");
+    strcpy(machine_code->machine_code, "1111000000100101");
     return err;
 }
 
-_err_type TRAP_handler(_line_type *p_line, _label_type *label_list, _machine_code_type *machine_code){
+_err_type TRAP_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_type *machine_code){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, tarpvector_value = -1;
     char trapvector_buffer[9] = {'\0'};
@@ -476,7 +616,7 @@ _err_type TRAP_handler(_line_type *p_line, _label_type *label_list, _machine_cod
     return err;
 }
 
-_err_type FILL_handler(_line_type *p_line, _label_type *label_list, _machine_code_type **machine_code){
+_err_type FILL_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_list_type *machine_code_list){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, imm_value = 0;
     char imm_buffer[17] = {'\0'};
@@ -495,15 +635,16 @@ _err_type FILL_handler(_line_type *p_line, _label_type *label_list, _machine_cod
         return err;
     }
 
-    strcpy((*machine_code)->machine_code, imm_buffer);
+    strcpy((machine_code_list->machine_codes)[machine_code_list->length].machine_code, imm_buffer);
+
+    machine_code_list->length += 1;
 
     return err;
 }
 
-_err_type BLKW_handler(_line_type *p_line, _label_type *label_list, _machine_code_type **machine_code){
+_err_type BLKW_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_list_type *machine_code_list){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, imm_value = 0, counter = 0;
-    _machine_code_type *p_machine_code = *machine_code;
 
     err.info = _set_start_index(p_line, ".BLKW", &i);
     if(err.info != SUCCESS) return err;
@@ -515,22 +656,16 @@ _err_type BLKW_handler(_line_type *p_line, _label_type *label_list, _machine_cod
     }
 
     for(counter = 0; counter < imm_value; ++ counter){
-        strcpy(p_machine_code->machine_code, "0000000000000000");
-        *machine_code = p_machine_code;
-    	p_machine_code->next = (_machine_code_type *)malloc(sizeof(_machine_code_type));
-    	p_machine_code = p_machine_code->next;
-    	p_machine_code->next = NULL;
+        strcpy((machine_code_list->machine_codes)[machine_code_list->length].machine_code, "0000000000000000");
+        machine_code_list->length += 1;
     }
-    free(p_machine_code);
-    (*machine_code)->next = NULL;
     return err;
 }
 
-_err_type STRINGZ_handler(_line_type *p_line, _label_type *label_list, _machine_code_type **machine_code){
+_err_type STRINGZ_handler(_line_type *p_line, _label_list_type *label_list, _machine_code_list_type *machine_code_list){
     _err_type err = {p_line->origional_line, SUCCESS};
     int i = 0, imm_value = 0;
     char imm_buffer[17] = {'\0'}, *p_string = NULL;
-    _machine_code_type *p_machine_code = *machine_code;
 
     err.info = _set_start_index(p_line, ".STRINGZ", &i);
     if(err.info != SUCCESS) return err;
@@ -542,20 +677,16 @@ _err_type STRINGZ_handler(_line_type *p_line, _label_type *label_list, _machine_
     		err.info = STRING_FAIL;
     		return err;
 		}
-    	strcpy(p_machine_code->machine_code, imm_buffer);
-        *machine_code = p_machine_code;
-    	p_machine_code->next = (_machine_code_type *)malloc(sizeof(_machine_code_type));
-    	p_machine_code = p_machine_code->next;
-    	p_machine_code->next = NULL;
+    	strcpy((machine_code_list->machine_codes)[machine_code_list->length].machine_code, imm_buffer);
+        machine_code_list->length += 1;
     	p_string ++;
 	}
-    strcpy(p_machine_code->machine_code, "0000000000000000");
-	*machine_code = p_machine_code;
-    (*machine_code)->next = NULL;
+    strcpy((machine_code_list->machine_codes)[machine_code_list->length].machine_code, "0000000000000000");
+	machine_code_list->length += 1;
     return err;
 }
 
-_err_type base_address_handler(int base_address, _machine_code_type *machine_code){
+_err_type base_address_handler(int base_address, _machine_code_list_type *machine_code_list){
     _err_type err = {-1, SUCCESS};
     char base_address_buffer[17] = {'\0'};
 
@@ -564,8 +695,7 @@ _err_type base_address_handler(int base_address, _machine_code_type *machine_cod
         return err;
     }
 
-    strcat(machine_code->machine_code, base_address_buffer);
-
+    strcat((machine_code_list->machine_codes)[machine_code_list->length].machine_code, base_address_buffer);
+    machine_code_list->length += 1;
     return err;
 }
-

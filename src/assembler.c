@@ -24,19 +24,6 @@
  */
 extern __global_states_type __global_states;
 
-
-/**
- * @brief 三个链表销毁函数
- * 
- */
-void _label_list_destory(_label_type label);
-void _line_list_destory(_line_type line);
-void _machine_code_list_destory(_machine_code_type machine_code);
-/**
- * }
- */
-
-
 /**
  * @brief 完成 assemble 的核心函数，包含4个环节。
  *        是这个文件里面唯一一个能被 main.c 调用的函数。
@@ -46,9 +33,9 @@ void _machine_code_list_destory(_machine_code_type machine_code);
  */
 int assemble(char *buffer){
     _err_type err;
-    _line_type line_list = {-1, -1, 0, {""}, NULL};
-    _label_type label_list = {"", -1, NULL};
-    _machine_code_type machine_code_list = {"", NULL};
+    _line_list_type line_list = {NUM_OF_LINES, 0, {-1, -1, 0, {""}}};
+    _label_list_type label_list = {NUM_OF_LABELS, 0, {"", -1}};
+    _machine_code_list_type machine_code_list = {NUM_OF_MACHINE_CODES, 0, {""}};
     int base_address = 0, lines = 0, state = 1;
 
     while(1){
@@ -73,54 +60,9 @@ int assemble(char *buffer){
         }
         break;
     }
-    _line_list_destory(line_list);
-    _label_list_destory(label_list);
-    // _machine_code_list_destory(machine_code_list);
+
     printf("assemble done, state = %d\n", state);
     return state;
-}
-/**
- * @brief 链表销毁
- * 
- * @param line 带有头节点的 _line_type 链表
- */
-void _line_list_destory(_line_type line){
-    _line_type  *p = line.next, *temp = NULL;
-    while(p != NULL){
-        temp = p->next;
-        free(p);
-        p = temp;
-    }
-}
-
-
-/**
- * @brief 链表销毁
- * 
- * @param label 带有头节点的 _label_type 链表
- */
-void _label_list_destory(_label_type label){
-    _label_type  *p = label.next, *temp = NULL;
-    while(p != NULL){
-        temp = p->next;
-        free(p);
-        p = temp;
-    }
-}
-
-
-/**
- * @brief 同上
- * 
- * @param machine_code 
- */
-void _machine_code_list_destory(_machine_code_type machine_code){
-    _machine_code_type *p = machine_code.next, *temp = NULL;
-    while(p != NULL){
-        temp = p->next;
-        free(p);
-        p = temp;
-    }
 }
 
 
@@ -150,12 +92,15 @@ int __raise_error(_err_type err){
  * @param line_list _line_type 链表
  * @return _err_type 错误信息
  */
-_err_type _pre_process(char *buffer, _line_type *line_list){
+_err_type _pre_process(char *buffer, _line_list_type *line_list){
     _err_type  err = {-1, SUCCESS};
     int num_line = 0, i = 0, physical_line = 0, state = 0, word_index = 0, sigle_label_line = 0;
     char **_buffer = (char **)malloc(sizeof(char *) * NUM_OF_LINES);
     char *token = 0;
     char word_buffer[LINE_WORD_LEN] = {'\0'};
+
+    int __is_key_word(char *str);
+
 
     for(i = 0; i < NUM_OF_LINES; ++ i)  _buffer[i] = (char *)malloc(sizeof(char) * LINE_WORD_NUM * LINE_WORD_LEN);
     /* 按照每行经行分割 */
@@ -166,9 +111,8 @@ printf("----------------\nline : %d\n", i);
             __dete_comment(_buffer[i]);             // 删除注释
             if(strlen(_buffer[i]) == 0) continue;   // 全是注释
             else{
-
                 token = strtok(_buffer[i], " ");
-                printf("token = %s\n", token);
+printf("first token = %s, line : %d\n", token, line_list->length);
                 if(strcmp(token, ".ORIG") == 0 && state == 0){  // 找到 .ORIG
                     state = 1;
                 }
@@ -179,23 +123,21 @@ printf("----------------\nline : %d\n", i);
                     if(sigle_label_line == 1){
                         sigle_label_line = 0;
                     }else{
-                        line_list->next = (_line_type *)malloc(sizeof(_line_type));
-                        line_list = line_list->next;
-                        line_list->physical_line = physical_line;
-                        line_list->origional_line = i;
-                        line_list->next = NULL;
+                        line_list->length += 1;
+                        (line_list->lines)[line_list->length].physical_line = physical_line;
+                        (line_list->lines)[line_list->length].origional_line = i;
                     }
                     while (token != NULL && word_index < LINE_WORD_NUM){
-                        strcpy((line_list->content)[word_index], token);
+                        strcpy(((line_list->lines)[line_list->length].content)[word_index], token);
 printf("--%s--\n", token);
                         token =strtok(NULL, " ");
                         ++ word_index;
                     }
-                    if(word_index == 1){
+                    if(word_index == 1 && __is_key_word(((line_list->lines)[line_list->length].content)[word_index - 1]) == 0){
                         sigle_label_line = 1;
                         continue;
                     }
-                    line_list->words_num = word_index;
+                    (line_list->lines)[line_list->length].words_num = word_index;
                     ++ physical_line;
                     word_index = 0;
                 }   // end if state != 0
@@ -428,58 +370,51 @@ int __get_pseudo_op_index(char *str){
  * @param base_address 
  * @return _err_type 
  */
-_err_type _first_path(_line_type *line_list, _label_type *label_list, int *base_address){
+_err_type _first_path(_line_list_type *line_list, _label_list_type *label_list, int *base_address){
     _err_type err = {-1, SUCCESS};
     char label_buffer[LABEL_NAME_SIZE];
     int state = 0, current_address = 0, address_incr = 0;
-    _line_type *prior = NULL, *current = NULL;
+    int current_index = 0, i = 0;
 
-    current = line_list->next;
-    prior = line_list;
-
-    while(current != NULL){
-        if(strcmp((current->content)[0], ".ORIG") == 0 && state == 0){
+    for(current_index = 0; current_index < line_list->length; ++ current_index){
+        if(strcmp(((line_list->lines)[current_index].content)[0], ".ORIG") == 0 && state == 0){
             state = 1;
-            *base_address = __get_const_value((current->content)[1]);
+            *base_address = __get_const_value(((line_list->lines)[current_index].content)[1]);
             __global_states.base_address = *base_address;
             if(*base_address == -1){
-                err.line = current->origional_line;
+                err.line = (line_list->lines)[current_index].origional_line;
                 err.info = ORIG_INVALID_ADDR;
                 break;
             }
-            prior ->next = current->next;
-            free(current);
-            current = prior->next;
+            for(i = current_index; i < line_list->length - 1; ++ i){
+                (line_list->lines)[i] = (line_list->lines)[i + 1];
+            }
+            current_index -= 1;
+            line_list->length -= 1;
             continue;               // 否则就会可能导致current访问出错
         }
-        if(strcmp((current->content)[0], ".END") == 0){
+        if(strcmp(((line_list->lines)[current_index].content)[0], ".END") == 0){
             state = 2;
-            prior->next = NULL;
-            while(current != NULL){
-                prior = current;
-                current = current->next;
-                free(prior);
-            }
+            line_list->length = current_index;
             break;
         }
         if(state == 1){
-            if(__is_key_word((current->content)[0]) == 0){     // 是label
-                label_list->next = (_label_type *)malloc(sizeof(_label_type));
-                label_list = label_list->next;
-
-                label_list->address = current_address;
-                label_list->next = NULL;
-                strcpy((label_list->name), (current->content)[0]);
+            if(__is_key_word(((line_list->lines)[current_index].content)[0]) == 0){     // 是label
+                strcpy((label_list->labels)[label_list->length].name, ((line_list->lines)[current_index].content)[0]);
+printf("label %d : %s, addr : %d\n", label_list->length, (label_list->labels)[label_list->length].name, current_address);
+                (label_list->labels)[label_list->length].address = current_address;
+                label_list->length += 1;
             }
-            address_incr = __inc_address(current);
+
+            (line_list->lines)[current_index].physical_line = current_address;
+            
+            address_incr = __inc_address(line_list->lines + current_index);
             if(address_incr < 0){
-                err.line = current->physical_line;
+                err.line = (line_list->lines)[current_index].physical_line;
                 err.info = INVALID_WORD;
             }
             current_address += address_incr;
         }
-        prior = current;
-        current = current->next;
     }
     return err;
 }
@@ -494,48 +429,38 @@ _err_type _first_path(_line_type *line_list, _label_type *label_list, int *base_
  * @param machine_code_list 
  * @return _err_type 
  */
-_err_type _second_process(_line_type *line_list, _label_type *label_list, int base_address, _machine_code_type *machine_code_list){
+_err_type _second_process(_line_list_type *line_list, _label_list_type *label_list, int base_address, _machine_code_list_type *machine_code_list){
    int counter = 0, line_type = 0, i = 0, index = -1;
+   int line_index = 0;
     _err_type err = {-1, SUCCESS};
-    _line_type *p_line = line_list->next;
-
-    machine_code_list->next = (_machine_code_type *)malloc(sizeof(machine_code_list));
-    machine_code_list = machine_code_list->next;
-
-    machine_code_list->next = NULL;
 
     err = base_address_handler(base_address, machine_code_list);
     if(err.info != SUCCESS) return err;
 
-    while(p_line != NULL){
-        machine_code_list->next = (_machine_code_type *)malloc(sizeof(machine_code_list));
-        machine_code_list = machine_code_list->next;
-
-        machine_code_list->next = NULL;
-
+    for(line_index = 0; line_index < line_list->length; ++ line_index){
         i = 0;
-        line_type = __is_key_word(p_line->content[i]);
+        line_type = __is_key_word((line_list->lines)[line_index].content[i]);
 
         if(line_type == 0){
             i = 1;
-            line_type = __is_key_word(p_line->content[i]);
+            line_type = __is_key_word((line_list->lines)[line_index].content[i]);
         }
         if(line_type == 1){
-            index = __get_instruction_index(p_line->content[i]);
+            index = __get_instruction_index((line_list->lines)[line_index].content[i]);
             if(index >= 0 && index <= (sizeof(instruction_handler) / sizeof(_instruction_handler_type)))
-                err = instruction_handler[index](p_line, label_list, machine_code_list);
+                err = instruction_handler[index]((line_list->lines) + line_index, label_list, (machine_code_list->machine_codes) + machine_code_list->length);
             printf("instruction index : %d\n", index);
+            machine_code_list->length += 1;
             if(err.info != SUCCESS) return err;
         }else if(line_type == 2){
-            index = __get_pseudo_op_index(p_line->content[i]);
+            index = __get_pseudo_op_index((line_list->lines)[line_index].content[i]);
             if(index >= 0 && index <= (sizeof(pseudo_op_handler) / sizeof(_instruction_handler_type)))
-                err = pseudo_op_handler[index](p_line, label_list, &machine_code_list);
+                err = pseudo_op_handler[index](line_list->lines + line_index, label_list, machine_code_list);
             printf("pseudo_op index : %d\n", index);
             if(err.info != SUCCESS) return err;
         }
-        printf("line : %d : \t%s\n", p_line->physical_line, machine_code_list->machine_code);
+        printf("line : %d : \t%s\n", (line_list->lines)[line_index].physical_line, (machine_code_list->machine_codes)[machine_code_list->length - 1]);
         counter ++;
-        p_line = p_line->next;
     }
     return err;
 }
@@ -547,19 +472,17 @@ _err_type _second_process(_line_type *line_list, _label_type *label_list, int ba
  * @param machine_code_list 
  * @return _err_type 
  */
-_err_type _save_machine_code_string(_machine_code_type *machine_code_list){
+_err_type _save_machine_code_string(_machine_code_list_type *machine_code_list){
     _err_type err = {-1, SUCCESS};
     FILE *p_file = NULL;
-
-    machine_code_list = machine_code_list->next;
+    int i = 0;
 
     p_file = fopen(__global_states.output_file_name, "w");
     printf("filename : %s\n", __global_states.output_file_name);
     if(p_file != NULL){
-        while(machine_code_list != NULL){
-            fprintf(p_file, "%s\n", machine_code_list->machine_code);
-            printf("%s\n", machine_code_list->machine_code);
-            machine_code_list = machine_code_list->next;
+        for(i = 0; i < machine_code_list->length; ++ i){
+            fprintf(p_file, "%s\n", (machine_code_list->machine_codes)[i].machine_code);
+            printf("%s\n", (machine_code_list->machine_codes)[i].machine_code);
         }
         fclose(p_file);
     }else{

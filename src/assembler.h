@@ -14,6 +14,7 @@
 #define LINE_WORD_NUM           6
 #define LC3_INSTRUCTION_LEN     16
 #define LC3_INSTRUCTION_STR_LEN 17
+#define NUM_OF_MACHINE_CODES    200
 
 
 /**
@@ -60,8 +61,14 @@ typedef struct _o_line_type{
     int origional_line;                             // 在源文件中它在第几行
     int words_num;                                  // 有多少个单词
     char content[LINE_WORD_NUM][LINE_WORD_LEN];     // 这一行的单词，不包含空格或换行符，但是包含 . 和 #
-    struct _o_line_type *next;                      // 指向下一个的指针（没错这是链表）
 }_line_type;
+
+
+typedef struct _o_line_list_type{
+    int size;
+    int length;
+    _line_type lines[NUM_OF_LINES];
+}_line_list_type;
 
 
 /**
@@ -71,8 +78,15 @@ typedef struct _o_line_type{
 typedef struct _o_label_type{
     char name[LABEL_NAME_SIZE];     // 标签名称
     int address;                    // 注意是在 assemble 后相对于第一行的地址增量，不是真正的地址
-    struct _o_label_type *next;     // 指向下一个的指针
 }_label_type;
+
+
+typedef struct _o_label_list_type{
+    int size;
+    int length;
+    _label_type labels[NUM_OF_LABELS];
+}_label_list_type;
+
 
 
 /**
@@ -81,8 +95,14 @@ typedef struct _o_label_type{
  */
 typedef struct _o_machine_code_type{
     char machine_code[LC3_INSTRUCTION_STR_LEN];     // 机器码
-    struct _o_machine_code_type *next;              // 指向下一个的指针
 }_machine_code_type;
+
+
+typedef struct _o_machine_code_list_type{
+    int size;
+    int length;
+    _machine_code_type machine_codes[NUM_OF_MACHINE_CODES];
+}_machine_code_list_type;
 
 
 /**
@@ -94,10 +114,10 @@ void __dete_comment(char *_str);
 int __is_key_word(char *str);
 int __raise_error(_err_type err);
 int __get_const_value(char *str);
-_err_type _pre_process(char *buffer, _line_type *line_list);
-_err_type _first_path(_line_type *line_list, _label_type *label_list, int *base_address);
-_err_type _second_process(_line_type *line_list, _label_type *label_list, int base_address, _machine_code_type *machine_code_list);
-_err_type _save_machine_code_string(_machine_code_type *machine_code_list);
+_err_type _pre_process(char *buffer, _line_list_type *line_list);
+_err_type _first_path(_line_list_type *line_list, _label_list_type *label_list, int *base_address);
+_err_type _second_process(_line_list_type *line_list, _label_list_type *label_list, int base_address, _machine_code_list_type *machine_code_list);
+_err_type _save_machine_code_string(_machine_code_list_type *machine_code_list);
 int assemble(char *buffer);
 /**
  * }
