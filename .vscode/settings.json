@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "assembler.h": "c",
+        "main.h": "c",
+        "instruction_handler.h": "c",
+        "assembler_consts.h": "c"
+    }
+}
